@@ -1,6 +1,5 @@
-import com.restfb.DefaultFacebookClient;
-import com.restfb.FacebookClient;
-import com.restfb.Version;
+import com.restfb.*;
+import com.restfb.types.Photo;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.embed.swing.JFXPanel;
@@ -9,13 +8,12 @@ import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 
 import javax.swing.*;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Properties;
+import java.util.LinkedList;
+import java.util.List;
 
 public class Main {
 
+    private static Version VERSION = Version.VERSION_2_8;
     private static String APP_ID = "588358218031324";
     private static String redirectUrl = "https://www.facebook.com/connect/login_success.html";
     /**
@@ -48,13 +46,10 @@ public class Main {
                         String tokenKey = "access_token";
                         int tokenKeyIndex = location.indexOf(tokenKey);
                         if (tokenKeyIndex != -1) {
-                            int valueStartIndex = tokenKeyIndex + tokenKey.length() + 1; // include the '=' sign here
-                            int endIndex = location.indexOf('&', valueStartIndex);
-                            if (endIndex == -1) endIndex = location.length();
-                            System.out.println("Location: " + location);
-                            String accessToken = location.substring(valueStartIndex, endIndex);
+                            FacebookClient.AccessToken accessToken = FacebookClient.AccessToken.fromQueryString(
+                                    location.substring(tokenKeyIndex));
                             new Thread(() -> downloadPicturesForUser(accessToken)).start();
-                            frame.setVisible(false);
+                            //frame.setVisible(false);
                         } else {
                             // TODO: Handle the case where we failed to log in
                         }
@@ -62,41 +57,55 @@ public class Main {
                 }
             });
             webView.getEngine().load(
-                "https://www.facebook.com/v2.8/dialog/oauth?client_id=588358218031324&display=popup&response_type=token&redirect_uri=https://www.facebook.com/connect/login_success.html");
+                "https://www.facebook.com/v2.8/dialog/oauth" +
+                        "?client_id=" + APP_ID +
+                        "&display=popup" +
+                        "&response_type=token" +
+                        "&scope=user_photos" +
+                        "&redirect_uri=https://www.facebook.com/connect/login_success.html");
         });
 
         //Display the window.
         frame.pack();
         frame.setSize(500, 500);
         frame.setVisible(true);
-
-        Properties prop = new Properties();
-        InputStream is;
-        String appSecret = null;
-        try {
-            is = new FileInputStream("secrets.properties");
-            prop.load(is);
-            is.close();
-            appSecret = prop.getProperty("fb_app_secret");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        FacebookClient.AccessToken accessToken =
-                new DefaultFacebookClient(Version.VERSION_2_8).obtainAppAccessToken(APP_ID, appSecret);
-
     }
 
-    private static void downloadPicturesForUser(String accessToken) {
-        System.out.println("DEBUG: " + accessToken);
+    private static void downloadPicturesForUser(FacebookClient.AccessToken accessToken) {
+        List<Photo> taggedPhotos = getPhotoUrls(accessToken, "tagged");
+        List<Photo> uploadedPhotos = getPhotoUrls(accessToken, "uploaded");
+    }
+
+    private static List<Photo> getPhotoUrls(FacebookClient.AccessToken accessToken, String type) {
+        System.out.println("access_token: " + accessToken.getAccessToken());
+        DefaultFacebookClient client = new DefaultFacebookClient(accessToken.getAccessToken(), VERSION);
+        Connection<Photo> photosConnection = client.fetchConnection(
+            "me/photos", Photo.class, Parameter.with("fields", "images,created_time"), Parameter.with("type", type));
+        int i = 0;
+        List<Photo> results = new LinkedList<>();
+        for (List<Photo> page : photosConnection) {
+            for(Photo photo : page) {
+                ++i;
+                results.add(photo);
+            }
+            System.out.println("Pulled " + i + " photos with type " + type);
+        }
+        return results;
+    }
+
+    private static Photo.Image getLargestImage(Photo photo) {
+        Photo.Image maxPhoto = null;
+        int maxSeenPixels = -1;
+        for (Photo.Image image : photo.getImages()) {
+            int imagePixels = image.getHeight() * image.getWidth();
+            if (imagePixels > maxSeenPixels) {
+                maxPhoto = image;
+            }
+        }
+        return maxPhoto;
     }
 
     public static void main(String[] args) {
-        //Schedule a job for the event-dispatching thread:
-        //creating and showing this application's GUI.
-        javax.swing.SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                createAndShowGUI();
-            }
-        });
+        javax.swing.SwingUtilities.invokeLater(() -> createAndShowGUI());
     }
 }
