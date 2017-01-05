@@ -8,8 +8,14 @@ import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 
 import javax.swing.*;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Properties;
 
 public class Main {
 
@@ -73,7 +79,34 @@ public class Main {
 
     private static void downloadPicturesForUser(FacebookClient.AccessToken accessToken) {
         List<Photo> taggedPhotos = getPhotoUrls(accessToken, "tagged");
-        List<Photo> uploadedPhotos = getPhotoUrls(accessToken, "uploaded");
+        List<Photo> allPhotos = getPhotoUrls(accessToken, "uploaded");
+        allPhotos.addAll(taggedPhotos);
+
+        for (Photo photo: allPhotos) {
+            try {
+                String outputFile = photo.getCreatedTime().toString().replace(' ', '-') + ".jpg";
+                saveUrlToFile(
+                        getLargestImage(photo).getSource(), outputFile);
+                System.out.println("Saved " + outputFile);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        System.exit(0);
+    }
+
+    private static void saveUrlToFile(String urlString, String outputFile) throws IOException {
+        URL url = new URL(urlString);
+        InputStream is = url.openStream();
+        OutputStream os = new FileOutputStream(outputFile);
+
+        byte[] b = new byte[2048];
+        int length;
+        while ((length = is.read(b)) != -1) {
+            os.write(b, 0, length);
+        }
+        is.close();
+        os.close();
     }
 
     private static List<Photo> getPhotoUrls(FacebookClient.AccessToken accessToken, String type) {
